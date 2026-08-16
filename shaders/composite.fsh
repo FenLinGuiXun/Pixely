@@ -4,6 +4,7 @@ uniform sampler2D colortex0;
 uniform sampler2D colortex1;
 uniform sampler2D colortex2;
 uniform sampler2D depthtex0;
+uniform sampler2D shadowtex0;
 
 in vec2 texcoord;
 
@@ -41,4 +42,5 @@ void main() {
 	color.rgb = pow(color.rgb, vec3(2.2)); //convert to linear color space
 	color.rgb *= blocklight + skylight + ambient + sunlight;
 	color.rgb = pow(color.rgb, vec3(1.0 / 2.2)); //deconvert from linear color for monitor
+	color.rgb *= texture(shadowtex0, texcoord).rgb;
 }
