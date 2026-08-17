@@ -6,6 +6,7 @@ uniform sampler2D colortex2;
 uniform sampler2D depthtex0;
 uniform sampler2D shadowtex0;
 
+
 in vec2 texcoord;
 
 const vec3 blocklightColor = vec3(1.0, 0.5, 0.08);
@@ -14,10 +15,16 @@ const vec3 sunlightColor = vec3(1.0);
 const vec3 ambientColor = vec3(0.1);
 
 uniform vec3 shadowLightPosition;
+uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
+uniform mat4 shadowModelView;
+uniform mat4 shadowProjection;
+
 
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 color;
+
+vec3 projectAndDivide(mat4 projectionMatrix, vec3 position);
 
 void main() {
 
@@ -37,10 +44,23 @@ void main() {
 	vec3 lightVector = normalize(shadowLightPosition);
 	vec3 worldLightVector = mat3(gbufferModelViewInverse) * lightVector;
 	vec3 ambient = ambientColor;
-	vec3 sunlight = sunlightColor * clamp(dot(worldLightVector, normal), 0.0, 1.0) * lightmap.g;
+
+	vec3 NDCPos = vec3(texcoord.xy, depth) * 2.0 - 1.0;
+	vec3 viewPos = projectAndDivide(gbufferProjectionInverse, NDCPos);
+	vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+	vec3 shadowViewPos = (shadowModelView * vec4(feetPlayerPos, 1.0)).xyz;
+	vec4 shadowClipPos = shadowProjection * vec4(shadowViewPos, 1.0);
+	vec3 shadowNDCPos = shadowClipPos.xyz / shadowClipPos.w;
+	vec3 shadowScreenPos = shadowNDCPos * 0.5 + 0.5;
+	float shadow = step(shadowScreenPos.z, texture(shadowtex0, shadowScreenPos.xy).r);
+	vec3 sunlight = sunlightColor * clamp(dot(worldLightVector, normal), 0.0, 1.0) * shadow;
 
 	color.rgb = pow(color.rgb, vec3(2.2)); //convert to linear color space
 	color.rgb *= blocklight + skylight + ambient + sunlight;
 	color.rgb = pow(color.rgb, vec3(1.0 / 2.2)); //deconvert from linear color for monitor
-	color.rgb *= texture(shadowtex0, texcoord).rgb;
+}
+
+vec3 projectAndDivide(mat4 projectionMatrix, vec3 position){
+  vec4 homPos = projectionMatrix * vec4(position, 1.0);
+  return homPos.xyz / homPos.w;
 }

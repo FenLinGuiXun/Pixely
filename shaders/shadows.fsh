@@ -1,10 +1,6 @@
 #version 460 compatibility
 
 uniform sampler2D gtexture;
-uniform mat4 gbufferProjectionInverse;
-uniform mat4 gbufferModelViewInverse;
-uniform mat4 shadowModelView;
-uniform mat4 shadowProjection;
 
 in vec2 texcoord;
 in vec4 glcolor;
