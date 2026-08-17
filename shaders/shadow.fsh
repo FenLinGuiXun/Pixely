@@ -1,6 +1,7 @@
 #version 460 compatibility
 
 uniform sampler2D gtexture;
+const float shadowDistanceRenderMul = 1.0;
 
 in vec2 texcoord;
 in vec4 glcolor;
