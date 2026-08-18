@@ -16,7 +16,6 @@ const vec3 blocklightColor = vec3(1.0, 0.5, 0.08);
 const vec3 skylightColor = vec3(0.05, 0.15, 0.3);
 const vec3 sunlightColor = vec3(1.0);
 const vec3 ambientColor = vec3(0.1);
-const int shadowMapResolution = 2048;
 
 uniform vec3 shadowLightPosition;
 uniform mat4 gbufferProjectionInverse;
@@ -30,6 +29,7 @@ layout(location = 0) out vec4 color;
 
 vec3 projectAndDivide(mat4 projectionMatrix, vec3 position);
 vec3 getShadow(vec3 shadowScreenPos);
+vec3 getSoftShadow(vec4 shadowClipPos);
 
 void main() {
 
@@ -55,11 +55,7 @@ void main() {
 	vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
 	vec3 shadowViewPos = (shadowModelView * vec4(feetPlayerPos, 1.0)).xyz;
 	vec4 shadowClipPos = shadowProjection * vec4(shadowViewPos, 1.0);
-	shadowClipPos.z -= 0.001; // bias
-	shadowClipPos.xyz = distortShadowClipPos(shadowClipPos.xyz); // distortion
-	vec3 shadowNDCPos = shadowClipPos.xyz / shadowClipPos.w;
-	vec3 shadowScreenPos = shadowNDCPos * 0.5 + 0.5;
-	vec3 shadow = getShadow(shadowScreenPos);
+	vec3 shadow = getSoftShadow(shadowClipPos);
 	vec3 sunlight = sunlightColor * clamp(dot(worldLightVector, normal), 0.0, 1.0) * shadow;
 
 	color.rgb = pow(color.rgb, vec3(2.2)); //convert to linear color space
@@ -104,4 +100,24 @@ vec3 getShadow(vec3 shadowScreenPos){
   and multiply that light by the color of the caster
   */
   return shadowColor.rgb * (1.0 - shadowColor.a);
+}
+
+vec3 getSoftShadow(vec4 shadowClipPos){
+  vec3 shadowAccum = vec3(0.0); // sum of all shadow samples
+  const int samples = SHADOW_RANGE * SHADOW_RANGE * 4; // we are taking 2 * SHADOW_RANGE * 2 * SHADOW_RANGE samples
+
+  for(int x = -SHADOW_RANGE; x < SHADOW_RANGE; x++){
+    for(int y = -SHADOW_RANGE; y < SHADOW_RANGE; y++){
+      vec2 offset = vec2(x, y) * SHADOW_RADIUS / float(SHADOW_RANGE);
+      offset /= shadowMapResolution; // offset in the rotated direction by the specified amount. We divide by the resolution so our offset is in terms of pixels
+      vec4 offsetShadowClipPos = shadowClipPos + vec4(offset, 0.0, 0.0); // add offset
+      offsetShadowClipPos.z -= 0.001; // apply bias
+      offsetShadowClipPos.xyz = distortShadowClipPos(offsetShadowClipPos.xyz); // apply distortion
+      vec3 shadowNDCPos = offsetShadowClipPos.xyz / offsetShadowClipPos.w; // convert to NDC space
+      vec3 shadowScreenPos = shadowNDCPos * 0.5 + 0.5; // convert to screen space
+      shadowAccum += getShadow(shadowScreenPos); // take shadow sample
+    }
+  }
+
+  return shadowAccum / float(samples); // divide sum by count, getting average shadow
 }
