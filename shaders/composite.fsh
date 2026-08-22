@@ -8,6 +8,7 @@ uniform sampler2D depthtex0;
 uniform sampler2D shadowtex0;
 uniform sampler2D shadowtex1;
 uniform sampler2D shadowcolor0;
+uniform int worldTime;
 
 
 in vec2 texcoord;
@@ -15,9 +16,11 @@ in vec2 texcoord;
 const vec3 blocklightColor = vec3(1.0, 0.5, 0.08);
 const vec3 skylightColor = vec3(0.05, 0.15, 0.3);
 const vec3 sunlightColor = vec3(1.0);
+const vec3 moonlightColor = vec3(0.05, 0.15, 0.3);
 const vec3 ambientColor = vec3(0.1);
 
-uniform vec3 shadowLightPosition;
+uniform vec3 sunPosition;
+uniform vec3 moonPosition;
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 shadowModelView;
@@ -46,9 +49,27 @@ void main() {
 
 	vec3 blocklight = lightmap.r * blocklightColor;
 	vec3 skylight = lightmap.g * skylightColor;
-	vec3 lightVector = normalize(shadowLightPosition);
-	vec3 worldLightVector = mat3(gbufferModelViewInverse) * lightVector;
+	vec3 lightVector = normalize(sunPosition);
+	vec3 worldSunlightVector = mat3(gbufferModelViewInverse) * lightVector;
+	vec3 moonLightVector = normalize(moonPosition);
+  vec3 worldMoonlightVector = mat3(gbufferModelViewInverse) * moonLightVector;
 	vec3 ambient = ambientColor;
+	
+  float moonShadowStrength = 0.0;
+  float time = float(worldTime);
+
+  if (time >= 12000.0 && time < 14000.0) {
+    // Fade in after sunset
+    moonShadowStrength = smoothstep(12000.0, 14000.0, time);
+  }
+  else if (time >= 14000.0 && time < 22000.0) {
+    // Full moon shadows through most of the night
+    moonShadowStrength = 1.0;
+  }
+  else if (time >= 22000.0) {
+    // Fade out toward sunrise
+    moonShadowStrength = 1.0 - smoothstep(22000.0, 24000.0, time);
+  }
 
 	vec3 NDCPos = vec3(texcoord.xy, depth) * 2.0 - 1.0;
 	vec3 viewPos = projectAndDivide(gbufferProjectionInverse, NDCPos);
@@ -56,10 +77,29 @@ void main() {
 	vec3 shadowViewPos = (shadowModelView * vec4(feetPlayerPos, 1.0)).xyz;
 	vec4 shadowClipPos = shadowProjection * vec4(shadowViewPos, 1.0);
 	vec3 shadow = getSoftShadow(shadowClipPos);
-	vec3 sunlight = sunlightColor * clamp(dot(worldLightVector, normal), 0.0, 1.0) * shadow;
+	
+  float sunVisibility = clamp(worldSunlightVector.y * 10.0, 0.0, 1.0);
+  vec3 sunlight =
+    sunlightColor
+    * clamp(dot(worldSunlightVector, normal), 0.0, 1.0)
+    * shadow
+    * sunVisibility;
+
+  float moonVisibility = clamp(worldMoonlightVector.y * 10.0, 0.0, 1.0);
+  vec3 moonShadow = mix(
+    vec3(1.0),
+    shadow,
+    moonShadowStrength
+  );
+
+  vec3 moonlight =
+    moonlightColor
+    * clamp(dot(worldMoonlightVector, normal), 0.0, 1.0)
+    * moonVisibility
+    * moonShadow;
 
 	color.rgb = pow(color.rgb, vec3(2.2)); //convert to linear color space
-	color.rgb *= blocklight + skylight + ambient + sunlight;
+	color.rgb *= blocklight + skylight + ambient + sunlight + moonlight;
 	color.rgb = pow(color.rgb, vec3(1.0 / 2.2)); //deconvert from linear color for monitor
 }
 
